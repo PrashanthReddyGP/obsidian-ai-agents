@@ -41,8 +41,12 @@ export class ChatService {
 1. Only call another agent if you cannot fulfill the user's request with your existing knowledge or tools.
 2. If the user's request is a simple follow-up that you can answer, do NOT call another agent.
 3. When you call an agent, be specific in your prompt to them.
-4. **Output Format**: Always respond to the user in plain, conversational text. Do NOT use JSON formatting for your final response.
-5. You are aware of the following available agents:
+4. **Action Mandate**: If the user asks you to perform an action (like sending a notification or reading a file), you MUST use the corresponding tool. Do NOT just describe it in text.
+5. **Notification Sequencing**: Do NOT call \`send_notification\` until you have obtained ALL the information requested. If you need to read a file or call another agent, do that FIRST. Send the notification only as the FINAL step once you have the content ready.
+6. **Tool Precision**: When calling a tool, you MUST provide all required arguments. You MUST put the actual message into the 'body' argument.
+    - Example: \`send_notification(title: "Task Done", body: "I have finished reading the project file and summarized it.")\`
+7. **Output Format**: Always respond to the user in plain, conversational text. Do NOT use JSON formatting for your final response.
+8. You are aware of the following available agents:
 ${agentRegistry}
 `.trim();
 

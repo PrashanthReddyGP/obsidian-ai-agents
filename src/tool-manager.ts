@@ -75,6 +75,27 @@ export class ToolManager {
                         required: ["agentId", "prompt"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "send_notification",
+                    description: "Show a persistent system-level popup notification. Use this to ensure the user sees an important message even if Obsidian is minimized.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            title: {
+                                type: "string",
+                                description: "A very SHORT title for the notification (e.g. 'Project Update')."
+                            },
+                            body: {
+                                type: "string",
+                                description: "The COMPLETE and DETAILED message text to show in the notification. Do NOT leave this empty."
+                            }
+                        },
+                        required: ["title", "body"]
+                    }
+                }
             }
         ];
 
@@ -104,6 +125,39 @@ export class ToolManager {
 
             case "call_agent":
                 return await this.orchestrateAgent(args.agentId, args.prompt);
+
+            case "send_notification":
+                const title = args.title || "AI Agent alert";
+                const body = args.body || "No message content was provided by the agent.";
+
+                // Show an Obsidian notice with longer duration (10 seconds)
+                new Notice(`System Notification: ${title}\n\n${body}`, 10000);
+
+                if (!("Notification" in window)) {
+                    return "Error: System notifications are not supported.";
+                }
+
+                try {
+                    const options = {
+                        body: body,
+                        requireInteraction: true, // Keeps it open on many systems until clicked
+                        silent: false
+                    };
+
+                    if (Notification.permission === "granted") {
+                        new Notification(title, options);
+                        return "Persistent notification sent.";
+                    } else if (Notification.permission !== "denied") {
+                        const permission = await Notification.requestPermission();
+                        if (permission === "granted") {
+                            new Notification(title, options);
+                            return "Persistent notification sent after permission grant.";
+                        }
+                    }
+                    return "Error: Notification permission denied.";
+                } catch (e) {
+                    return `Error triggering notification: ${String(e)}`;
+                }
 
             default:
                 return `Error: Unknown tool "${name}"`;
