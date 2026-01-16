@@ -6,6 +6,8 @@ export interface Agent {
 	name: string;
 	systemPrompt: string;
 	model: string;
+	enabledTools?: string[];
+	allowedPaths?: string;
 }
 
 export interface AIAgentsSettings {
@@ -19,7 +21,9 @@ export const DEFAULT_SETTINGS: AIAgentsSettings = {
 			id: 'default-assistant',
 			name: 'General Assistant',
 			systemPrompt: 'You are a helpful AI assistant.',
-			model: 'llama3.2-latest'
+			model: 'llama3.2-latest',
+			enabledTools: ['get_current_time', 'read_vault_file', 'call_agent'],
+			allowedPaths: ''
 		}
 	],
 	ollamaUrl: 'http://localhost:11434'

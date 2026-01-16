@@ -32,6 +32,16 @@ export class AgentEditModal extends Modal {
                 .setValue(name)
                 .onChange(value => name = value));
 
+        if (this.agent) {
+            new Setting(contentEl)
+                .setName("Agent ID")
+                .setDesc("Use this ID to call this agent from other agents.")
+                .addText(text => text
+                    .setValue(this.agent!.id)
+                    .setDisabled(true)
+                    .inputEl.addClass("agent-id-readonly"));
+        }
+
         const modelSetting = new Setting(contentEl)
             .setName("Model")
             .setDesc("Select an Ollama model");
@@ -96,6 +106,40 @@ export class AgentEditModal extends Modal {
                 .setValue(systemPrompt)
                 .onChange(value => systemPrompt = value));
 
+        contentEl.createEl("h3", { text: "Permissions & Tools" });
+
+        let enabledTools = this.agent?.enabledTools || ['get_current_time', 'read_vault_file', 'call_agent'];
+        let allowedPaths = this.agent?.allowedPaths || "";
+
+        const tools = [
+            { id: 'get_current_time', name: 'Current Time', desc: 'Allow getting current date/time' },
+            { id: 'read_vault_file', name: 'Read Vault', desc: 'Allow reading files from vault' },
+            { id: 'call_agent', name: 'Agent Orchestration', desc: 'Allow calling other agents' }
+        ];
+
+        tools.forEach(tool => {
+            new Setting(contentEl)
+                .setName(tool.name)
+                .setDesc(tool.desc)
+                .addToggle(toggle => toggle
+                    .setValue(enabledTools.includes(tool.id))
+                    .onChange(value => {
+                        if (value) {
+                            if (!enabledTools.includes(tool.id)) enabledTools.push(tool.id);
+                        } else {
+                            enabledTools = enabledTools.filter(id => id !== tool.id);
+                        }
+                    }));
+        });
+
+        new Setting(contentEl)
+            .setName("Allowed Paths")
+            .setDesc("Comma-separated list of folders or files this agent can access (e.g. 'Project A, Journal/Daily'). Leave empty for all.")
+            .addTextArea(text => text
+                .setPlaceholder("e.g. Folder1, Note.md")
+                .setValue(allowedPaths)
+                .onChange(value => allowedPaths = value));
+
         new Setting(contentEl)
             .addButton(btn => btn
                 .setButtonText("Save")
@@ -113,7 +157,9 @@ export class AgentEditModal extends Modal {
                         id: this.agent?.id || Date.now().toString(),
                         name,
                         systemPrompt,
-                        model
+                        model,
+                        enabledTools,
+                        allowedPaths
                     };
                     this.onSubmit(newAgent);
                     this.close();

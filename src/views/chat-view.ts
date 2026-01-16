@@ -3,6 +3,8 @@ import AIAgentsPlugin from "../main";
 import { Agent } from "../settings";
 import { OllamaClient, ChatMessage } from "../ollama-client";
 import { AgentEditModal } from "../modals/agent-edit-modal";
+import { ToolManager } from "../tool-manager";
+import { ChatService } from "../services/chat-service";
 
 export const VIEW_TYPE_AI_AGENTS = "ai-agents-view";
 
@@ -138,6 +140,17 @@ export class ChatView extends ItemView {
         }
 
         this.messages.forEach(msg => {
+            if (msg.role === 'tool') {
+                const msgEl = this.resultEl.createDiv({ cls: `chat-message message-system` });
+                msgEl.createEl("div", { text: `🔧 Tool Result: ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`, cls: "result-text" });
+                return;
+            }
+            if (msg.tool_calls) {
+                const msgEl = this.resultEl.createDiv({ cls: `chat-message message-system` });
+                const toolNames = msg.tool_calls.map(tc => tc.function.name).join(", ");
+                msgEl.createEl("div", { text: `🤖 Calling tools: ${toolNames}`, cls: "result-text" });
+                return;
+            }
             const msgEl = this.resultEl.createDiv({ cls: `chat-message message-${msg.role}` });
             msgEl.createEl("div", { text: msg.content, cls: "result-text" });
         });
@@ -199,12 +212,11 @@ export class ChatView extends ItemView {
                 await this.fetchModels();
             }
             if (this.availableModels.length > 0) {
-                // If current model is missing or legacy, try to find llama3.2-latest or use first
                 const fallback = this.availableModels.find(m => m.includes('llama3.2')) || this.availableModels[0];
                 model = fallback!;
                 new Notice(`Using fallback model: ${model}`);
             } else {
-                model = 'llama3.2-latest'; // Ultimate fallback
+                model = 'llama3.2-latest';
                 new Notice("No Ollama models detected. Attempting with llama3.2-latest...");
             }
         }
@@ -219,29 +231,48 @@ export class ChatView extends ItemView {
         this.taskInput.setValue("");
         this.renderMessages();
 
-        // Add loading state
-        const loadingEl = this.resultEl.createDiv({ cls: "chat-message message-assistant loading", text: "..." });
-        this.resultEl.scrollTop = this.resultEl.scrollHeight;
+        const chatService = new ChatService(this.app, this.plugin);
+        let loadingEl: HTMLDivElement | null = null;
+        let statusEl: HTMLDivElement | null = null;
 
         try {
-            const ollama = new OllamaClient(this.plugin.settings.ollamaUrl);
+            const finalMessages = await chatService.chatWithTools(
+                agent,
+                this.messages,
+                (update) => {
+                    if (update.status === "loading") {
+                        if (statusEl) {
+                            statusEl.remove();
+                            statusEl = null;
+                        }
+                        if (!loadingEl) {
+                            loadingEl = this.resultEl.createDiv({ cls: "chat-message message-assistant loading", text: "..." });
+                            this.resultEl.scrollTop = this.resultEl.scrollHeight;
+                        }
+                    } else if (update.status === "tool_running") {
+                        if (loadingEl) {
+                            loadingEl.remove();
+                            loadingEl = null;
+                        }
+                        if (statusEl) statusEl.remove();
+                        statusEl = this.resultEl.createDiv({ cls: "message-system", text: update.message });
+                        this.resultEl.scrollTop = this.resultEl.scrollHeight;
+                        this.renderMessages(); // Support intermediate rendering
+                    } else if (update.status === "done" || update.status === "error") {
+                        if (loadingEl) loadingEl.remove();
+                        if (statusEl) statusEl.remove();
+                        this.renderMessages();
+                        if (update.status === "error" && update.message) {
+                            new Notice(`Error: ${update.message}`);
+                        }
+                    }
+                }
+            );
 
-            // Prepare messages with system prompt
-            const apiMessages: ChatMessage[] = [
-                { role: 'system', content: agent.systemPrompt },
-                ...this.messages
-            ];
-
-            const response = await ollama.chat(model, apiMessages);
-
-            loadingEl.remove();
-            this.messages.push({ role: 'assistant', content: response });
+            this.messages = finalMessages;
             this.renderMessages();
         } catch (error) {
-            loadingEl.remove();
-            const message = error instanceof Error ? error.message : String(error);
-            this.messages.push({ role: 'system', content: `Error: ${message}` });
-            this.renderMessages();
+            new Notice(`Chat Error: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 }

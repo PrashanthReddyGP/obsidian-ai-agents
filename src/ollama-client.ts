@@ -1,8 +1,17 @@
 import { Notice } from "obsidian";
 
+export interface ToolCall {
+    function: {
+        name: string;
+        arguments: Record<string, any>;
+    };
+}
+
 export interface ChatMessage {
-    role: 'system' | 'user' | 'assistant';
+    role: 'system' | 'user' | 'assistant' | 'tool';
     content: string;
+    tool_calls?: ToolCall[];
+    tool_call_id?: string;
 }
 
 export interface OllamaResponse {
@@ -19,7 +28,7 @@ export class OllamaClient {
         this.baseUrl = baseUrl.replace(/\/$/, '');
     }
 
-    async chat(model: string, messages: ChatMessage[]): Promise<string> {
+    async chat(model: string, messages: ChatMessage[], tools?: any[]): Promise<ChatMessage> {
         try {
             const response = await fetch(`${this.baseUrl}/api/chat`, {
                 method: 'POST',
@@ -30,6 +39,7 @@ export class OllamaClient {
                     model,
                     messages,
                     stream: false,
+                    tools,
                 }),
             });
 
@@ -39,7 +49,7 @@ export class OllamaClient {
             }
 
             const data: OllamaResponse = await response.json();
-            return data.message.content;
+            return data.message;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             new Notice(`Error connecting to Ollama: ${message}`);
