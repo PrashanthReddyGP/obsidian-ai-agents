@@ -1,4 +1,4 @@
-import {App, PluginSettingTab, Setting} from "obsidian";
+import { App, PluginSettingTab, Setting } from "obsidian";
 import AIAgentsPlugin from "./main";
 
 export interface Agent {
@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS: AIAgentsSettings = {
 			id: 'default-assistant',
 			name: 'General Assistant',
 			systemPrompt: 'You are a helpful AI assistant.',
-			model: 'llama3'
+			model: 'llama3.2-latest'
 		}
 	],
 	ollamaUrl: 'http://localhost:11434'
@@ -34,7 +34,7 @@ export class AIAgentsSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 
 		containerEl.empty();
 

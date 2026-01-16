@@ -1,7 +1,8 @@
-import { ItemView, WorkspaceLeaf, Notice, Setting, ButtonComponent, TextComponent, TextAreaComponent } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, ButtonComponent, TextAreaComponent, setIcon } from "obsidian";
 import AIAgentsPlugin from "../main";
 import { Agent } from "../settings";
-import { OllamaClient } from "../ollama-client";
+import { OllamaClient, ChatMessage } from "../ollama-client";
+import { AgentEditModal } from "../modals/agent-edit-modal";
 
 export const VIEW_TYPE_AI_AGENTS = "ai-agents-view";
 
@@ -10,6 +11,8 @@ export class ChatView extends ItemView {
     selectedAgentId: string | null = null;
     resultEl!: HTMLDivElement;
     taskInput!: TextAreaComponent;
+    availableModels: string[] = [];
+    messages: ChatMessage[] = [];
 
     constructor(leaf: WorkspaceLeaf, plugin: AIAgentsPlugin) {
         super(leaf);
@@ -29,7 +32,18 @@ export class ChatView extends ItemView {
     }
 
     async onOpen() {
+        await this.fetchModels();
         this.render();
+    }
+
+    async fetchModels() {
+        try {
+            const ollama = new OllamaClient(this.plugin.settings.ollamaUrl);
+            const models = await ollama.listModels();
+            this.availableModels = models.map(m => m.name);
+        } catch (e) {
+            console.error("Failed to fetch models", e);
+        }
     }
 
     render() {
@@ -43,24 +57,37 @@ export class ChatView extends ItemView {
         const agentRow = contentEl.createDiv({ cls: "agent-selection-row" });
         this.renderAgentSelection(agentRow);
 
+        // Chat Header with Clear button
+        const chatHeader = contentEl.createDiv({ cls: "chat-header" });
+        chatHeader.createEl("h5", { text: "Conversation" });
+        new ButtonComponent(chatHeader)
+            .setButtonText("Clear")
+            .setTooltip("Clear conversation history")
+            .onClick(() => this.clearChat());
+
+        // History container
+        this.resultEl = contentEl.createDiv({ cls: "result-container" });
+        this.renderMessages();
+
         // Task Input Area
-        contentEl.createEl("h5", { text: "Assign Task" });
         const inputContainer = contentEl.createDiv({ cls: "task-input-container" });
         this.taskInput = new TextAreaComponent(inputContainer)
-            .setPlaceholder("What should the agent do?")
+            .setPlaceholder("Follow up or assign a new task...")
             .then(ta => {
                 ta.inputEl.addClass("task-textarea");
+                ta.inputEl.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        this.runTask();
+                    }
+                });
             });
 
         const actionRow = contentEl.createDiv({ cls: "action-row" });
         new ButtonComponent(actionRow)
-            .setButtonText("Run Task")
+            .setButtonText("Send")
             .setCta()
             .onClick(() => this.runTask());
-
-        // Result Area
-        contentEl.createEl("h5", { text: "Result" });
-        this.resultEl = contentEl.createDiv({ cls: "result-container" });
     }
 
     renderAgentSelection(container: HTMLElement | null) {
@@ -83,21 +110,76 @@ export class ChatView extends ItemView {
 
             dropdown.onchange = () => {
                 this.selectedAgentId = dropdown.value;
+                this.clearChat(); // Clear chat when switching agents
             };
+
+            // Edit Button
+            const editBtn = container.createDiv({ cls: "clickable-icon edit-icon", title: "Edit Agent" });
+            setIcon(editBtn, "pencil");
+            editBtn.onclick = () => this.editSelectedAgent();
+
+            // Delete Button
+            const deleteBtn = container.createDiv({ cls: "clickable-icon delete-icon", title: "Delete Agent" });
+            setIcon(deleteBtn, "trash");
+            deleteBtn.onclick = () => this.deleteSelectedAgent();
         }
 
-        new ButtonComponent(container)
-            .setIcon("plus")
-            .setTooltip("Create New Agent")
-            .onClick(() => {
-                this.plugin.openAgentEditModal();
+        // Add Button
+        const addBtn = container.createDiv({ cls: "clickable-icon add-icon", title: "Create New Agent" });
+        setIcon(addBtn, "plus");
+        addBtn.onclick = () => this.plugin.openAgentEditModal();
+    }
+
+    renderMessages() {
+        this.resultEl.empty();
+        if (this.messages.length === 0) {
+            this.resultEl.createDiv({ cls: "message-system", text: "Start a conversation..." });
+            return;
+        }
+
+        this.messages.forEach(msg => {
+            const msgEl = this.resultEl.createDiv({ cls: `chat-message message-${msg.role}` });
+            msgEl.createEl("div", { text: msg.content, cls: "result-text" });
+        });
+
+        // Scroll to bottom
+        this.resultEl.scrollTop = this.resultEl.scrollHeight;
+    }
+
+    clearChat() {
+        this.messages = [];
+        this.renderMessages();
+    }
+
+    editSelectedAgent() {
+        if (!this.selectedAgentId) return;
+        const agent = this.plugin.agentManager!.getAgent(this.selectedAgentId);
+        if (agent) {
+            const modal = new AgentEditModal(this.app, this.plugin, agent, (updated) => {
+                this.plugin.agentManager!.updateAgent(updated);
+                this.refresh();
+                new Notice(`Agent "${updated.name}" updated.`);
             });
+            modal.open();
+        }
+    }
+
+    deleteSelectedAgent() {
+        if (!this.selectedAgentId) return;
+        const agent = this.plugin.agentManager!.getAgent(this.selectedAgentId);
+        if (agent && confirm(`Are you sure you want to delete agent "${agent.name}"?`)) {
+            this.plugin.agentManager!.deleteAgent(this.selectedAgentId);
+            this.selectedAgentId = null;
+            this.refresh();
+            new Notice(`Agent "${agent.name}" deleted.`);
+        }
     }
 
     refresh() {
         const agentRow = this.contentEl.querySelector(".agent-selection-row") as HTMLElement;
         if (agentRow) {
             this.renderAgentSelection(agentRow);
+            this.render(); // Full re-render to handle potential state changes
         }
     }
 
@@ -111,31 +193,55 @@ export class ChatView extends ItemView {
         const agent = this.plugin.agentManager!.getAgent(selectedId);
         if (!agent) return;
 
+        let model = agent.model;
+        if (!model || model === 'llama3') {
+            if (this.availableModels.length === 0) {
+                await this.fetchModels();
+            }
+            if (this.availableModels.length > 0) {
+                // If current model is missing or legacy, try to find llama3.2-latest or use first
+                const fallback = this.availableModels.find(m => m.includes('llama3.2')) || this.availableModels[0];
+                model = fallback!;
+                new Notice(`Using fallback model: ${model}`);
+            } else {
+                model = 'llama3.2-latest'; // Ultimate fallback
+                new Notice("No Ollama models detected. Attempting with llama3.2-latest...");
+            }
+        }
+
         const task = this.taskInput.getValue();
         if (!task.trim()) {
-            new Notice("Please enter a task.");
             return;
         }
 
-        this.resultEl.setText("Running task...");
-        this.resultEl.addClass("loading");
-        this.resultEl.removeClass("error");
+        // Add user message to history
+        this.messages.push({ role: 'user', content: task });
+        this.taskInput.setValue("");
+        this.renderMessages();
+
+        // Add loading state
+        const loadingEl = this.resultEl.createDiv({ cls: "chat-message message-assistant loading", text: "..." });
+        this.resultEl.scrollTop = this.resultEl.scrollHeight;
 
         try {
             const ollama = new OllamaClient(this.plugin.settings.ollamaUrl);
-            const response = await ollama.chat(agent.model, [
-                { role: 'system', content: agent.systemPrompt },
-                { role: 'user', content: task }
-            ]);
 
-            this.resultEl.empty();
-            this.resultEl.removeClass("loading");
-            this.resultEl.createEl("pre", { text: response, cls: "result-text" });
+            // Prepare messages with system prompt
+            const apiMessages: ChatMessage[] = [
+                { role: 'system', content: agent.systemPrompt },
+                ...this.messages
+            ];
+
+            const response = await ollama.chat(model, apiMessages);
+
+            loadingEl.remove();
+            this.messages.push({ role: 'assistant', content: response });
+            this.renderMessages();
         } catch (error) {
+            loadingEl.remove();
             const message = error instanceof Error ? error.message : String(error);
-            this.resultEl.setText(`Error: ${message}`);
-            this.resultEl.addClass("error");
-            this.resultEl.removeClass("loading");
+            this.messages.push({ role: 'system', content: `Error: ${message}` });
+            this.renderMessages();
         }
     }
 }
