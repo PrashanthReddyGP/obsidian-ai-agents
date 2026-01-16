@@ -1,12 +1,13 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "obsidian-ai-agents",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Create and manage AI agents to automate tasks using Ollama.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"deploy": "npm run build && (if not exist \"D:\\Dreams\\Inklet\\.obsidian\\plugins\\obsidian-ai-agents\\\" mkdir \"D:\\Dreams\\Inklet\\.obsidian\\plugins\\obsidian-ai-agents\\\") && copy /Y main.js \"D:\\Dreams\\Inklet\\.obsidian\\plugins\\obsidian-ai-agents\\\" && copy /Y manifest.json \"D:\\Dreams\\Inklet\\.obsidian\\plugins\\obsidian-ai-agents\\\" && copy /Y styles.css \"D:\\Dreams\\Inklet\\.obsidian\\plugins\\obsidian-ai-agents\\\"",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
