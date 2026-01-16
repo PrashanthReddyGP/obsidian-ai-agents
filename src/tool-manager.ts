@@ -96,6 +96,33 @@ export class ToolManager {
                         required: ["title", "body"]
                     }
                 }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "ask_user",
+                    description: "CRITICAL: Ask the user a question and WAIT for their response. Use this if you need user input, confirmation, or a choice to proceed.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            question: {
+                                type: "string",
+                                description: "The question you want to ask the user."
+                            },
+                            type: {
+                                type: "string",
+                                enum: ["choice", "text"],
+                                description: "The type of input: 'choice' for buttons, 'text' for a text field."
+                            },
+                            options: {
+                                type: "array",
+                                items: { type: "string" },
+                                description: "If type is 'choice', provide a list of button labels (e.g. ['Yes', 'No', 'Later'])."
+                            }
+                        },
+                        required: ["question", "type"]
+                    }
+                }
             }
         ];
 
@@ -127,11 +154,11 @@ export class ToolManager {
                 return await this.orchestrateAgent(args.agentId, args.prompt);
 
             case "send_notification":
-                const title = args.title || "AI Agent alert";
-                const body = args.body || "No message content was provided by the agent.";
+                const nTitle = args.title || "AI Agent alert";
+                const nBody = args.body || "No message content was provided by the agent.";
 
                 // Show an Obsidian notice with longer duration (10 seconds)
-                new Notice(`System Notification: ${title}\n\n${body}`, 10000);
+                new Notice(`System Notification: ${nTitle}\n\n${nBody}`, 10000);
 
                 if (!("Notification" in window)) {
                     return "Error: System notifications are not supported.";
@@ -139,18 +166,18 @@ export class ToolManager {
 
                 try {
                     const options = {
-                        body: body,
-                        requireInteraction: true, // Keeps it open on many systems until clicked
+                        body: nBody,
+                        requireInteraction: true,
                         silent: false
                     };
 
                     if (Notification.permission === "granted") {
-                        new Notification(title, options);
+                        new Notification(nTitle, options);
                         return "Persistent notification sent.";
                     } else if (Notification.permission !== "denied") {
                         const permission = await Notification.requestPermission();
                         if (permission === "granted") {
-                            new Notification(title, options);
+                            new Notification(nTitle, options);
                             return "Persistent notification sent after permission grant.";
                         }
                     }
@@ -158,6 +185,40 @@ export class ToolManager {
                 } catch (e) {
                     return `Error triggering notification: ${String(e)}`;
                 }
+
+            case "ask_user":
+                return new Promise((resolve) => {
+                    let resolved = false;
+                    const complete = (res: string) => {
+                        if (resolved) return;
+                        resolved = true;
+                        resolve(`User responded: "${res}"`);
+                    };
+
+                    const { PromptModal } = require("./modals/prompt-modal");
+                    const modal = new PromptModal(
+                        this.app,
+                        args.question,
+                        args.type,
+                        args.options || ["Yes", "No"],
+                        complete
+                    );
+
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        const n = new Notification("Agent Question", {
+                            body: `${args.question}\n\n[ Click to respond ]`,
+                            requireInteraction: true,
+                        });
+
+                        n.onclick = () => {
+                            window.focus();
+                            if (!resolved) modal.open();
+                        };
+                    } else {
+                        // If notifications are blocked or not allowed, just show the modal
+                        modal.open();
+                    }
+                });
 
             default:
                 return `Error: Unknown tool "${name}"`;

@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: AIAgentsSettings = {
 			name: 'General Assistant',
 			systemPrompt: 'You are a helpful AI assistant.',
 			model: 'llama3.2-latest',
-			enabledTools: ['get_current_time', 'read_vault_file', 'call_agent', 'send_notification'],
+			enabledTools: ['get_current_time', 'read_vault_file', 'call_agent', 'send_notification', 'ask_user'],
 			allowedPaths: ''
 		}
 	],

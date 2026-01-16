@@ -115,7 +115,8 @@ export class AgentEditModal extends Modal {
             { id: 'get_current_time', name: 'Current Time', desc: 'Allow getting current date/time' },
             { id: 'read_vault_file', name: 'Read Vault', desc: 'Allow reading files from vault' },
             { id: 'call_agent', name: 'Agent Orchestration', desc: 'Allow calling other agents' },
-            { id: 'send_notification', name: 'System Notification', desc: 'Allow sending Windows/System notifications' }
+            { id: 'send_notification', name: 'System Notification', desc: 'Allow sending Windows/System notifications' },
+            { id: 'ask_user', name: 'User Interaction', desc: 'Allow asking the user questions with buttons or text input' }
         ];
 
         tools.forEach(tool => {
